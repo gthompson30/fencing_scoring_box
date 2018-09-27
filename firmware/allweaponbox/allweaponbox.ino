@@ -14,18 +14,6 @@
 //                                                                           //
 //===========================================================================//
 
-// Fencers are refered to as Green and Red. Green on the left and red on the right.
-// The pins of the connectors are refered to as A-B--C
-// Where A is: the return path for Epee, the Lame for Foil and Sabre
-// Where B is: live for all three weapons, it connects to the blade (there is debate whether A or B is used in Sabre) 
-// Where C is: ground for both Epee, Foil and Sabre. Connected to the guard of all 3 weapons.
-// The order of the weapons is in alphabetical order, epee, foil sabre.
-
-//============
-// #includes
-//============
-#include <Adafruit_NeoPixel.h>  // adafruit's library for neopixel displays
-
 //============
 // #defines
 //============
@@ -34,56 +22,58 @@
 //#define TEST_LIGHTS       // turns on lights for a second on start up
 //#define TEST_ADC_SPEED    // used to test sample rate of ADCs
 //#define REPORT_TIMING     // prints timings over serial interface
-#define NEOPIXELS         // if this is set then sketch uses the neopixel display, if not then individual leds per pin are assumed.
 #define BUZZERTIME  1000  // length of time the buzzer is kept on after a hit (ms)
 #define LIGHTTIME   3000  // length of time the lights are kept on after a hit (ms)
 #define BAUDRATE   57600  // baudrate of the serial debug interface
+#define NEOPIX
 
-#define LED_PIN        8  // neopixels data pin
-#define NUMPIXELS     40  // number of NeoPixels on display
-
-
-// initialise the neopixel class
-Adafruit_NeoPixel pixels = Adafruit_NeoPixel(NUMPIXELS, LED_PIN, NEO_GRB + NEO_KHZ800);
+#ifdef NEOPIX
+#include <Adafruit_NeoPixel.h>
+Adafruit_NeoPixel pixels = Adafruit_NeoPixel(40, 8, NEO_GRB + NEO_KHZ800);
+#endif
 
 //============
 // Pin Setup
 //============
-//const uint8_t shortLEDGrn  =  8;    // Short Circuit A Light
-const uint8_t onTargetGrn  =  9;    // On Target A Light
-const uint8_t offTargetGrn = 10;    // Off Target A Light
-const uint8_t offTargetRed = 11;    // Off Target B Light
-const uint8_t onTargetRed  = 12;    // On Target B Light
-const uint8_t shortLEDRed  = 13;    // Short Circuit A Light
+#ifdef NEOPIX
+const uint8_t neopixPin  =  8;    // data pin for the neopixels shield
+const uint8_t neopixLeds = 40;    // number of leds
+#else
+//const uint8_t shortLEDA  =  8;    // Short Circuit A Light
+const uint8_t onTargetA  =  9;    // On Target A Light
+const uint8_t offTargetA = 10;    // Off Target A Light
+const uint8_t offTargetB = 11;    // Off Target B Light
+const uint8_t onTargetB  = 12;    // On Target B Light
+//const uint8_t shortLEDB  = 13;    // Short Circuit A Light
+#endif
 
-// The micro only has 4 analog pins
-//const uint8_t groundPinGrn = A0;    // Ground A pin - Analog
-const uint8_t weaponPinGrn = A2;    // Weapon A pin - Analog
-const uint8_t lamePinGrn   = A3;    // Lame   A pin - Analog (Epee return path)
-const uint8_t lamePinRed   = A0;    // Lame   B pin - Analog (Epee return path)
-const uint8_t weaponPinRed = A1;    // Weapon B pin - Analog
-//const uint8_t groundPinRed = A5;    // Ground B pin - Analog
+//const uint8_t groundPinA = A0;    // Ground A pin - Analog
+const uint8_t weaponPinA = A1;    // Weapon A pin - Analog
+const uint8_t lamePinA   = A2;    // Lame   A pin - Analog (Epee return path)
+const uint8_t lamePinB   = A3;    // Lame   B pin - Analog (Epee return path)
+const uint8_t weaponPinB = A4;    // Weapon B pin - Analog
+//const uint8_t groundPinB = A5;    // Ground B pin - Analog
 
 const uint8_t modePin    =  2;        // Mode change button interrupt pin 0 (digital pin 2)
 const uint8_t buzzerPin  =  3;        // buzzer pin
-const uint8_t modeLeds[] = {4, 5, 6}; // LED pins to indicate weapon mode selected {e f s}
+const uint8_t modeLeds[] = {4, 5, 6}; // LED pins to indicate weapon mode selected {f e s}
 
 //=========================
 // values of analog reads
 //=========================
-int grnA = 0;
-int redA = 0;
-int grnB = 0;
-int redB = 0;
-int grnC = 0;
-int redC = 0;
+int weaponA = 0;
+int weaponB = 0;
+int lameA   = 0;
+int lameB   = 0;
+int groundA = 0;
+int groundB = 0;
 
 //=======================
 // depress and timeouts
 //=======================
-long depressGrnTime = 0;
-long depressRedTime = 0;
-bool lockedOut      = false;
+long depressAtime = 0;
+long depressBtime = 0;
+bool lockedOut    = false;
 
 //==========================
 // Lockout & Depress Times
@@ -104,23 +94,23 @@ const long depress [] = { 14000,   2000,   1000};  // the minimum amount of time
 //=================
 // mode constants
 //=================
-const uint8_t EPEE_MODE  = 0;
-const uint8_t FOIL_MODE  = 1;
+const uint8_t FOIL_MODE  = 0;
+const uint8_t EPEE_MODE  = 1;
 const uint8_t SABRE_MODE = 2;
 
-uint8_t currentMode = FOIL_MODE;
+uint8_t currentMode = EPEE_MODE;
 
 bool modeJustChangedFlag = false;
 
 //=========
 // states
 //=========
-boolean depressedGrn  = false;
-boolean depressedRed  = false;
-boolean hitOnTargGrn  = false;
-boolean hitOffTargGrn = false;
-boolean hitOnTargRed  = false;
-boolean hitOffTargRed = false;
+boolean depressedA  = false;
+boolean depressedB  = false;
+boolean hitOnTargA  = false;
+boolean hitOffTargA = false;
+boolean hitOnTargB  = false;
+boolean hitOffTargB = false;
 
 #ifdef TEST_ADC_SPEED
 long now;
@@ -133,46 +123,45 @@ bool done = false;
 // Configuration
 //================
 void setup() {
-
-   Serial.begin(BAUDRATE);
-   while (!Serial);
-   Serial.println("3 Weapon Scoring Box");
-   Serial.println("====================");
-   Serial.print  ("Mode : ");
-   Serial.println(currentMode);
-
    // set the internal pullup resistor on modePin
    pinMode(modePin, INPUT_PULLUP);
 
-   // add the interrupt to the mode pin (pin 2 is interrupt0 on the Uno and interrupt1 on the Micro)
-   // change to modePin-2 for the Uno
-   attachInterrupt(modePin-1, changeMode, FALLING);
+   // add the interrupt to the mode pin (interrupt is pin 0)
+   attachInterrupt(modePin-2, changeMode, FALLING);
    pinMode(modeLeds[0], OUTPUT);
    pinMode(modeLeds[1], OUTPUT);
    pinMode(modeLeds[2], OUTPUT);
 
    // set the light pins to outputs
-   pinMode(offTargetGrn, OUTPUT);
-   pinMode(offTargetRed, OUTPUT);
-   pinMode(onTargetGrn,  OUTPUT);
-   pinMode(onTargetRed,  OUTPUT);
-   //pinMode(shortLEDGrn,  OUTPUT);
-   pinMode(shortLEDRed,  OUTPUT);
+   #ifndef NEOPIX
+   pinMode(offTargetA, OUTPUT);
+   pinMode(offTargetB, OUTPUT);
+   pinMode(onTargetA,  OUTPUT);
+   pinMode(onTargetB,  OUTPUT);
+   //pinMode(shortLEDA,  OUTPUT);
+   //pinMode(shortLEDB,  OUTPUT);
    pinMode(buzzerPin,  OUTPUT);
 
    digitalWrite(modeLeds[currentMode], HIGH);
-
-   // initialise the LED display
-   pixels.begin();
+   #endif
 
 #ifdef TEST_LIGHTS
    testLights();
 #endif
 
+#ifdef NEOPIX
+   pixels.begin();
+#endif
    // this optimises the ADC to make the sampling rate quicker
    //adcOpt();
 
-   setModeLeds();
+   Serial.begin(BAUDRATE);
+   Serial.println("3 Weapon Scoring Box");
+   Serial.println("====================");
+   Serial.print  ("Mode : ");
+   Serial.println(currentMode);
+
+   resetValues();
 }
 
 
@@ -211,15 +200,15 @@ void loop() {
    while(1) {
       checkIfModeChanged();
       // read analog pins
-      grnA = analogRead(weaponPinGrn);
-      redA = analogRead(weaponPinRed);
-      grnB = analogRead(lamePinGrn);
-      redB = analogRead(lamePinRed);
+      weaponA = analogRead(weaponPinA);
+      weaponB = analogRead(weaponPinB);
+      lameA   = analogRead(lamePinA);
+      lameB   = analogRead(lamePinB);
       signalHits();
-      if      (currentMode == EPEE_MODE)
-         epee();
-      else if (currentMode == FOIL_MODE)
+      if      (currentMode == FOIL_MODE)
          foil();
+      else if (currentMode == EPEE_MODE)
+         epee();
       else if (currentMode == SABRE_MODE)
          sabre();
 
@@ -237,22 +226,13 @@ void loop() {
    }
 }
 
-// the following variables are unsigned long's because the time, measured in miliseconds,
-// will quickly become a bigger number than can be stored in an int.
-unsigned long lastDebounceTime = 0;  // the last time the output pin was toggled
-unsigned long debounceDelay = 50;    // the debounce time; increase if the output flickers
 
 //=====================
 // Mode pin interrupt
 //=====================
 void changeMode() {
-   Serial.println("Button Pressed");
-   if ((millis() - lastDebounceTime) >  debounceDelay && digitalRead(modePin) == LOW) {
-      modeJustChangedFlag = true;
-   } else {
-      lastDebounceTime = millis();
-      modeJustChangedFlag = false;
-   }
+   // set a flag to keep the time in the ISR to a min
+   modeJustChangedFlag = true;
 }
 
 
@@ -260,27 +240,21 @@ void changeMode() {
 // Sets the correct mode led
 //============================
 void setModeLeds() {
-   if (currentMode == EPEE_MODE) {
-      ledEpee();
-      digitalWrite(onTargetGrn, HIGH);
-   } else {
-      if (currentMode == FOIL_MODE) {
-         ledFoil();
-         digitalWrite(onTargetRed, HIGH);
-      } else {
-         if (currentMode == SABRE_MODE){
-            ledSabre();
-            digitalWrite(onTargetGrn, HIGH);
-            digitalWrite(onTargetRed, HIGH);
-         }
-      }
-   }
-   long now = millis();
-   while (millis() < now + 1000) {}
+   //if (currentMode == FOIL_MODE) {
+   //   digitalWrite(onTargetA, HIGH);
+   //} else {
+   //   if (currentMode == EPEE_MODE) {
+   //     digitalWrite(onTargetB, HIGH);
+   //   } else {
+   //      if (currentMode == SABRE_MODE){
+   //         digitalWrite(onTargetA, HIGH);
+   //         digitalWrite(onTargetB, HIGH);
+   //      }
+   //   }
+   //}
    //delay(500);
-   digitalWrite(onTargetGrn, LOW);
-   digitalWrite(onTargetRed, LOW);
-   clear();
+   //digitalWrite(onTargetA, LOW);
+   //digitalWrite(onTargetB, LOW);
 }
 
 
@@ -288,18 +262,19 @@ void setModeLeds() {
 // Run when mode changed
 //========================
 void checkIfModeChanged() {
-   if (modeJustChangedFlag) {
-      if (currentMode == 2)
-         currentMode = 0;
-      else
-         currentMode++;
-
+ if (modeJustChangedFlag) {
+      if (digitalRead(modePin)) {
+         if (currentMode == 2)
+            currentMode = 0;
+         else
+            currentMode++;
+      }
       setModeLeds();
-      modeJustChangedFlag = false;
 #ifdef DEBUG
       Serial.print("Mode changed to: ");
       Serial.println(currentMode);
 #endif
+      modeJustChangedFlag = false;
    }
 }
 
@@ -310,69 +285,69 @@ void checkIfModeChanged() {
 void foil() {
 
    long now = micros();
-   if (((hitOnTargGrn || hitOffTargGrn) && (depressGrnTime + lockout[0] < now)) || 
-       ((hitOnTargRed || hitOffTargRed) && (depressRedTime + lockout[0] < now))) {
+   if (((hitOnTargA || hitOffTargA) && (depressAtime + lockout[0] < now)) || 
+       ((hitOnTargB || hitOffTargB) && (depressBtime + lockout[0] < now))) {
       lockedOut = true;
    }
 
-   // weapon Grn
-   if (hitOnTargGrn == false && hitOffTargGrn == false) { // ignore if Grn has already hit
+   // weapon A
+   if (hitOnTargA == false && hitOffTargA == false) { // ignore if A has already hit
       // off target
-      if (900 < grnA && redB < 100) {
-         if (!depressedGrn) {
-            depressGrnTime = micros();
-            depressedGrn   = true;
+      if (900 < weaponA && lameB < 100) {
+         if (!depressedA) {
+            depressAtime = micros();
+            depressedA   = true;
          } else {
-            if (depressGrnTime + depress[0] <= micros()) {
-               hitOffTargGrn = true;
+            if (depressAtime + depress[0] <= micros()) {
+               hitOffTargA = true;
             }
          }
       } else {
       // on target
-         if (400 < grnA && grnA < 600 && 400 < redB && redB < 600) {
-            if (!depressedGrn) {
-               depressGrnTime = micros();
-               depressedGrn   = true;
+         if (400 < weaponA && weaponA < 600 && 400 < lameB && lameB < 600) {
+            if (!depressedA) {
+               depressAtime = micros();
+               depressedA   = true;
             } else {
-               if (depressGrnTime + depress[0] <= micros()) {
-                  hitOnTargGrn = true;
+               if (depressAtime + depress[0] <= micros()) {
+                  hitOnTargA = true;
                }
             }
          } else {
             // reset these values if the depress time is short.
-            depressGrnTime = 0;
-            depressedGrn   = 0;
+            depressAtime = 0;
+            depressedA   = 0;
          }
       }
    }
 
-   // weapon Red
-   if (hitOnTargRed == false && hitOffTargRed == false) { // ignore if Red has already hit
+   // weapon B
+   if (hitOnTargB == false && hitOffTargB == false) { // ignore if B has already hit
       // off target
-      if (900 < redA && grnB < 100) {
-         if (!depressedRed) {
-            depressRedTime = micros();
-            depressedRed   = true;
+      if (900 < weaponB && lameA < 100) {
+         if (!depressedB) {
+            depressBtime = micros();
+            depressedB   = true;
          } else {
-            if (depressRedTime + depress[0] <= micros()) {
-               hitOffTargRed = true;
+            if (depressBtime + depress[0] <= micros()) {
+               hitOffTargB = true;
             }
          }
       } else {
       // on target
-         if (400 < redA && redA < 600 && 400 < grnB && grnB < 600) {
-            if (!depressedRed) {
-               depressRedTime = micros();
-               depressedRed   = true;
+         if (400 < weaponB && weaponB < 600 && 400 < lameA && lameA < 600) {
+            if (!depressedB) {
+               depressBtime = micros();
+               depressedB   = true;
             } else {
-               if (depressRedTime + depress[0] <= micros()) {
-                  hitOnTargRed = true;
+               if (depressBtime + depress[0] <= micros()) {
+                  hitOnTargB = true;
                }
             }
          } else {
             // reset these values if the depress time is short.
-            depressRedTime = 0;
-            depressedRed   = 0;
+            depressBtime = 0;
+            depressedB   = 0;
          }
       }
    }
@@ -384,48 +359,48 @@ void foil() {
 //===================
 void epee() {
    long now = micros();
-   if ((hitOnTargGrn && (depressGrnTime + lockout[1] < now)) || (hitOnTargRed && (depressRedTime + lockout[1] < now))) {
+   if ((hitOnTargA && (depressAtime + lockout[1] < now)) || (hitOnTargB && (depressBtime + lockout[1] < now))) {
       lockedOut = true;
    }
 
-   // weapon Grn
-   //  no hit for Grn yet    && weapon depress    && opponent lame touched
-   if (hitOnTargGrn == false) {
-      if (400 < grnA && grnA < 600 && 400 < grnB && grnB < 600) {
-         if (!depressedGrn) {
-            depressGrnTime = micros();
-            depressedGrn   = true;
+   // weapon A
+   //  no hit for A yet    && weapon depress    && opponent lame touched
+   if (hitOnTargA == false) {
+      if (400 < weaponA && weaponA < 600 && 400 < lameA && lameA < 600) {
+         if (!depressedA) {
+            depressAtime = micros();
+            depressedA   = true;
          } else {
-            if (depressGrnTime + depress[1] <= micros()) {
-               hitOnTargGrn = true;
+            if (depressAtime + depress[1] <= micros()) {
+               hitOnTargA = true;
             }
          }
       } else {
          // reset these values if the depress time is short.
-         if (depressedGrn == true) {
-            depressGrnTime = 0;
-            depressedGrn   = 0;
+         if (depressedA == true) {
+            depressAtime = 0;
+            depressedA   = 0;
          }
       }
    }
 
-   // weapon Red
-   //  no hit for Red yet    && weapon depress    && opponent lame touched
-   if (hitOnTargRed == false) {
-      if (400 < redA && redA < 600 && 400 < redB && redB < 600) {
-         if (!depressedRed) {
-            depressRedTime = micros();
-            depressedRed   = true;
+   // weapon B
+   //  no hit for B yet    && weapon depress    && opponent lame touched
+   if (hitOnTargB == false) {
+      if (400 < weaponB && weaponB < 600 && 400 < lameB && lameB < 600) {
+         if (!depressedB) {
+            depressBtime = micros();
+            depressedB   = true;
          } else {
-            if (depressRedTime + depress[1] <= micros()) {
-               hitOnTargRed = true;
+            if (depressBtime + depress[1] <= micros()) {
+               hitOnTargB = true;
             }
          }
       } else {
          // reset these values if the depress time is short.
-         if (depressedRed == true) {
-            depressRedTime = 0;
-            depressedRed   = 0;
+         if (depressedB == true) {
+            depressBtime = 0;
+            depressedB   = 0;
          }
       }
    }
@@ -438,46 +413,46 @@ void epee() {
 void sabre() {
 
    long now = micros();
-   if (((hitOnTargGrn || hitOffTargGrn) && (depressGrnTime + lockout[2] < now)) || 
-       ((hitOnTargRed || hitOffTargRed) && (depressRedTime + lockout[2] < now))) {
+   if (((hitOnTargA || hitOffTargA) && (depressAtime + lockout[2] < now)) || 
+       ((hitOnTargB || hitOffTargB) && (depressBtime + lockout[2] < now))) {
       lockedOut = true;
    }
 
-   // weapon Grn
-   if (hitOnTargGrn == false && hitOffTargGrn == false) { // ignore if Grn has already hit
+   // weapon A
+   if (hitOnTargA == false && hitOffTargA == false) { // ignore if A has already hit
       // on target
-      if (400 < grnA && grnA < 600 && 400 < redB && redB < 600) {
-         if (!depressedGrn) {
-            depressGrnTime = micros();
-            depressedGrn   = true;
+      if (400 < weaponA && weaponA < 600 && 400 < lameB && lameB < 600) {
+         if (!depressedA) {
+            depressAtime = micros();
+            depressedA   = true;
          } else {
-            if (depressGrnTime + depress[2] <= micros()) {
-               hitOnTargGrn = true;
+            if (depressAtime + depress[2] <= micros()) {
+               hitOnTargA = true;
             }
          }
       } else {
          // reset these values if the depress time is short.
-         depressGrnTime = 0;
-         depressedGrn   = 0;
+         depressAtime = 0;
+         depressedA   = 0;
       }
    }
 
-   // weapon Red
-   if (hitOnTargRed == false && hitOffTargRed == false) { // ignore if Red has already hit
+   // weapon B
+   if (hitOnTargB == false && hitOffTargB == false) { // ignore if B has already hit
       // on target
-      if (400 < redA && redA < 600 && 400 < grnB && grnB < 600) {
-         if (!depressedRed) {
-            depressRedTime = micros();
-            depressedRed   = true;
+      if (400 < weaponB && weaponB < 600 && 400 < lameA && lameA < 600) {
+         if (!depressedB) {
+            depressBtime = micros();
+            depressedB   = true;
          } else {
-            if (depressRedTime + depress[2] <= micros()) {
-               hitOnTargRed = true;
+            if (depressBtime + depress[2] <= micros()) {
+               hitOnTargB = true;
             }
          }
       } else {
          // reset these values if the depress time is short.
-         depressRedTime = 0;
-         depressedRed   = 0;
+         depressBtime = 0;
+         depressedB   = 0;
       }
    }
 }
@@ -489,28 +464,24 @@ void sabre() {
 void signalHits() {
    // non time critical, this is run after a hit has been detected
    if (lockedOut) {
-      if (hitOnTargGrn) {
-         ledOnTargGrn();
+      if (hitOnTargA) {
+         leftOnT();
       }
-      if (hitOffTargGrn) {
-         ledOffTargGrn();
+      if (hitOffTargA) {
+         leftOffT();
       }
-      if (hitOffTargRed) {
-         ledOffTargRed();
+      if (hitOffTargB) {
+         rightOffT();
       }
-      if (hitOnTargRed) {
-         ledOnTargRed();
+      if (hitOnTargB) {
+         rightOnT();
       }
-      digitalWrite(onTargetGrn,  hitOnTargGrn);
-      digitalWrite(offTargetGrn, hitOffTargGrn);
-      digitalWrite(offTargetRed, hitOffTargRed);
-      digitalWrite(onTargetRed,  hitOnTargRed);
       digitalWrite(buzzerPin,  HIGH);
 #ifdef DEBUG
-      String serData = String("hitOnTargGrn  : ") + hitOnTargGrn  + "\n"
-                            + "hitOffTargGrn : "  + hitOffTargGrn + "\n"
-                            + "hitOffTargRed : "  + hitOffTargRed + "\n"
-                            + "hitOnTargRed  : "  + hitOnTargRed  + "\n"
+      String serData = String("hitOnTargA  : ") + hitOnTargA  + "\n"
+                            + "hitOffTargA : "  + hitOffTargA + "\n"
+                            + "hitOffTargB : "  + hitOffTargB + "\n"
+                            + "hitOnTargB  : "  + hitOnTargB  + "\n"
                             + "Locked Out  : "  + lockedOut   + "\n";
       Serial.println(serData);
 #endif
@@ -523,29 +494,30 @@ void signalHits() {
 // Reset all variables
 //======================
 void resetValues() {
-   long now = millis();
-   while (millis() < now + BUZZERTIME);        // wait before turning off the buzzer
+   delay(BUZZERTIME);             // wait before turning off the buzzer
    digitalWrite(buzzerPin,  LOW);
-   while (millis() < now + LIGHTTIME-BUZZERTIME);
-   //delay(LIGHTTIME-BUZZERTIME);   // wait before turning off the lights
-   digitalWrite(onTargetGrn,  LOW);
-   digitalWrite(offTargetGrn, LOW);
-   digitalWrite(offTargetRed, LOW);
-   digitalWrite(onTargetRed,  LOW);
-   //digitalWrite(shortLEDGrn,  LOW);
-   digitalWrite(shortLEDRed,  LOW);
-   clear();
+   delay(LIGHTTIME-BUZZERTIME);   // wait before turning off the lights
+   #ifdef NEOPIX
+   clearNeo();
+   #else
+   digitalWrite(onTargetA,  LOW);
+   digitalWrite(offTargetA, LOW);
+   digitalWrite(offTargetB, LOW);
+   digitalWrite(onTargetB,  LOW);
+   //digitalWrite(shortLEDA,  LOW);
+   //digitalWrite(shortLEDB,  LOW);
+   #endif
 
-   lockedOut      = false;
-   depressGrnTime = 0;
-   depressedGrn   = false;
-   depressRedTime = 0;
-   depressedRed   = false;
+   lockedOut    = false;
+   depressAtime = 0;
+   depressedA   = false;
+   depressBtime = 0;
+   depressedB   = false;
 
-   hitOnTargGrn  = false;
-   hitOffTargGrn = false;
-   hitOnTargRed  = false;
-   hitOffTargRed = false;
+   hitOnTargA  = false;
+   hitOffTargA = false;
+   hitOnTargB  = false;
+   hitOffTargB = false;
 
    delay(100);
 }
@@ -555,122 +527,89 @@ void resetValues() {
 // Test lights
 //==============
 void testLights() {
-   ledOnTargGrn();
-   ledOnTargRed();
-   digitalWrite(onTargetGrn,  HIGH);
-   digitalWrite(onTargetRed, HIGH);
+   #ifndef NEOPIX
+   digitalWrite(offTargetA, HIGH);
+   digitalWrite(onTargetA,  HIGH);
+   digitalWrite(offTargetB, HIGH);
+   digitalWrite(onTargetB,  HIGH);
+   //digitalWrite(shortLEDA,  HIGH);
+   //digitalWrite(shortLEDB,  HIGH);
+   #endif
    delay(1000);
-   clear();
-   ledOffTargGrn();
-   ledOffTargRed();
-   digitalWrite(offTargetGrn, HIGH);
-   digitalWrite(offTargetRed,  HIGH);
-   delay(1000);
-   clear();
-   ledShortGrn();
-   ledShortRed();
-   //digitalWrite(shortLEDGrn,  HIGH);
-   digitalWrite(shortLEDRed,  HIGH);
-   delay(1000);
-   clear();
    resetValues();
 }
 
-void clear() {
-  for(int i=0;i<8;i++){
-    for(int j=0;j<9;j++){
-      pixels.setPixelColor(j*8+i, pixels.Color(0,0,0));
-    }
-  }
-  pixels.show();
-}
 
-void ledEpee() {
-   pixels.setPixelColor( 2, pixels.Color(23,33,178));
-   pixels.setPixelColor( 3, pixels.Color(23,33,178));
-   pixels.setPixelColor( 4, pixels.Color(23,33,178));
-   pixels.setPixelColor(10, pixels.Color(23,33,178));
-   pixels.setPixelColor(18, pixels.Color(23,33,178));
-   pixels.setPixelColor(19, pixels.Color(23,33,178));
-   pixels.setPixelColor(26, pixels.Color(23,33,178));
-   pixels.setPixelColor(34, pixels.Color(23,33,178));
-   pixels.setPixelColor(35, pixels.Color(23,33,178));
-   pixels.setPixelColor(36, pixels.Color(23,33,178));
+void clearNeo() {
+   for(int i=0;i<8;i++){
+      for(int j=0;j<9;j++){
+         pixels.setPixelColor(j*8+i, pixels.Color(0,0,0));
+      }
+   }
    pixels.show();
 }
 
-void ledFoil() { 
-   pixels.setPixelColor( 2, pixels.Color(23,33,178));
-   pixels.setPixelColor( 3, pixels.Color(23,33,178));
-   pixels.setPixelColor( 4, pixels.Color(23,33,178));
-   pixels.setPixelColor(10, pixels.Color(23,33,178));
-   pixels.setPixelColor(18, pixels.Color(23,33,178));
-   pixels.setPixelColor(19, pixels.Color(23,33,178));
-   pixels.setPixelColor(26, pixels.Color(23,33,178));
-   pixels.setPixelColor(34, pixels.Color(23,33,178));
+void leftOnT() {
+   #ifdef NEOPIX
+   for(int i=0;i<4;i++){
+      for(int j=0;j<9;j++){
+         pixels.setPixelColor(j*8+i, pixels.Color(50,0,0));
+      }
+   }
    pixels.show();
+   #else
+   digitalWrite(onTargetA,  hitOnTargA);
+   #endif
 }
 
-void ledSabre() { 
-   pixels.setPixelColor( 2, pixels.Color(23,33,178));
-   pixels.setPixelColor( 3, pixels.Color(23,33,178));
-   pixels.setPixelColor( 4, pixels.Color(23,33,178));
-   pixels.setPixelColor(10, pixels.Color(23,33,178));
-   pixels.setPixelColor(18, pixels.Color(23,33,178));
-   pixels.setPixelColor(19, pixels.Color(23,33,178));
-   pixels.setPixelColor(20, pixels.Color(23,33,178));
-   pixels.setPixelColor(28, pixels.Color(23,33,178));
-   pixels.setPixelColor(34, pixels.Color(23,33,178));
-   pixels.setPixelColor(35, pixels.Color(23,33,178));
-   pixels.setPixelColor(36, pixels.Color(23,33,178));
+void rightOnT() {
+   #ifdef NEOPIX
+   for(int i=4;i<8;i++){
+      for(int j=0;j<9;j++){
+         pixels.setPixelColor(j*8+i, pixels.Color(0,50,0));
+      }
+   }
    pixels.show();
+   #else
+   digitalWrite(onTargetB,  hitOnTargB);
+   #endif
 }
 
-void ledOnTargGrn() {
-  for(int i=4;i<8;i++){
-    for(int j=0;j<9;j++){
-      pixels.setPixelColor(j*8+i, pixels.Color(50,0,0));
-    }
-  }
-  pixels.show();
+void leftOffT() {
+   #ifdef NEOPIX
+   for(int i=2;i<3;i++){
+      for(int j=0;j<9;j++){
+         pixels.setPixelColor(j*8+i, pixels.Color(50,50,50));
+      }
+   }
+   pixels.setPixelColor( 9, pixels.Color(50,50,50));
+   pixels.setPixelColor(16, pixels.Color(50,50,50));
+   pixels.setPixelColor(17, pixels.Color(50,50,50));
+   pixels.setPixelColor(25, pixels.Color(50,50,50));
+   pixels.show();
+   #else
+   digitalWrite(offTargetA, hitOffTargA);
+   #endif
 }
 
-void ledOnTargRed() {
-  for(int i=0;i<4;i++){
-    for(int j=0;j<9;j++){
-      pixels.setPixelColor(j*8+i, pixels.Color(0,50,0));
-    }
-  }
-  pixels.show();
+void rightOffT() {
+   #ifdef NEOPIX
+   for(int i=5;i<6;i++){
+      for(int j=0;j<9;j++){
+         pixels.setPixelColor(j*8+i, pixels.Color(50,50,50));
+      }
+   }
+   pixels.setPixelColor(14, pixels.Color(50,50,50));
+   pixels.setPixelColor(22, pixels.Color(50,50,50));
+   pixels.setPixelColor(23, pixels.Color(50,50,50));
+   pixels.setPixelColor(30, pixels.Color(50,50,50));
+   pixels.show();
+   #else
+   digitalWrite(offTargetB, hitOffTargB);
+   #endif
 }
 
-void ledOffTargGrn() {
-  for(int i=5;i<6;i++){
-    for(int j=0;j<9;j++){
-      pixels.setPixelColor(j*8+i, pixels.Color(50,50,50));
-    }
-  }
-  pixels.setPixelColor(14, pixels.Color(50,50,50));
-  pixels.setPixelColor(22, pixels.Color(50,50,50));
-  pixels.setPixelColor(23, pixels.Color(50,50,50));
-  pixels.setPixelColor(30, pixels.Color(50,50,50));
-  pixels.show();
-}
-
-void ledOffTargRed() {
-  for(int i=2;i<3;i++){
-    for(int j=0;j<9;j++){
-      pixels.setPixelColor(j*8+i, pixels.Color(50,50,50));
-    }
-  }
-  pixels.setPixelColor( 9, pixels.Color(50,50,50));
-  pixels.setPixelColor(16, pixels.Color(50,50,50));
-  pixels.setPixelColor(17, pixels.Color(50,50,50));
-  pixels.setPixelColor(25, pixels.Color(50,50,50));
-  pixels.show();
-}
-
-void ledShortGrn() {
+void leftShort() {
   for(int i=0;i<2;i++){
     for(int j=3;j<5;j++){
       pixels.setPixelColor(j*8+i, pixels.Color(100,50,0));
@@ -679,7 +618,7 @@ void ledShortGrn() {
   pixels.show();
 }
 
-void ledShortRed() {
+void rightShort() {
   for(int i=6;i<8;i++){
     for(int j=3;j<5;j++){
       pixels.setPixelColor(j*8+i, pixels.Color(100,50,0));
